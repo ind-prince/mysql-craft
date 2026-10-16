@@ -1,51 +1,92 @@
 import { createPool } from 'mysql2/promise';
-import type { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
-import { Logger } from './Logger';
+import type { Pool, PoolConnection } from 'mysql2/promise';
+import { Router } from 'express';
+import { BaseClient } from './BaseClient';
 import { Transaction } from './Transaction';
-import { DatabaseError } from '../errors';
+import { createResourceRouter, type ResourceEngineOptions } from './ResourceEngine';
+import {
+  InstrumentationManager,
+  TerminalLoggerInstrumentation,
+  type PoolMetrics
+} from './Instrumentation';
+import { DatabaseError, PoolExhaustedError } from '../errors';
 import type {
   DatabaseConfig,
-  InsertResult,
-  UpdateResult,
-  DeleteResult,
+  QueryExecutionOptions,
+  TransactionOptions,
   HealthCheckResult
 } from './types';
 
-const TRANSIENT_ERROR_CODES = new Set([
+const TRANSIENT_NETWORK_ERRORS = new Set([
   'PROTOCOL_CONNECTION_LOST',
   'ECONNRESET',
   'ECONNREFUSED',
   'ETIMEDOUT',
   'EHOSTUNREACH',
-  'ER_CON_COUNT_ERROR',
+  'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR'
+]);
+
+const DEADLOCK_ERRORS = new Set([
   'ER_LOCK_DEADLOCK',
-  'ER_LOCK_WAIT_TIMEOUT'
+  'ER_LOCK_WAIT_TIMEOUT',
+  '1213',
+  '1205'
 ]);
 
 /**
- * Modern, safe, lightweight MySQL client wrapper built on top of mysql2/promise.
+ * Modern, enterprise-grade MySQL Database Client built on mysql2/promise.
+ * Features bounded connection pool queues, idempotent full-jitter retries,
+ * transaction deadlock retries, pluggable instrumentation, and instant CRUD routers.
  */
-export class Database {
+export class Database extends BaseClient {
   private readonly pool: Pool;
-  private readonly logger: Logger;
-  private readonly retryAttempts: number;
-  private readonly retryDelayMs: number;
+  private readonly instrumentationManager: InstrumentationManager;
+  private readonly startTime = performance.now();
+  private isDraining = false;
 
   public readonly config: DatabaseConfig;
+  public readonly connectionLimit: number;
+  public readonly queueLimit: number;
 
   constructor(config: DatabaseConfig) {
-    this.config = config;
-    this.logger = new Logger(config.debug);
-    this.retryAttempts = config.retryAttempts ?? 3;
-    this.retryDelayMs = config.retryDelayMs ?? 300;
+    // 1. Setup Instrumentation & Logging
+    const manager = new InstrumentationManager();
 
-    // Default pool configuration best-practices
+    if (config.debug) {
+      const debugOpts = typeof config.debug === 'object' ? config.debug : {};
+      manager.addListener(
+        new TerminalLoggerInstrumentation({
+          slowThresholdMs: config.slowQueryThresholdMs ?? 500,
+          sensitiveKeys: config.sensitiveKeys,
+          ...debugOpts
+        })
+      );
+    }
+
+    if (config.instrumentation) {
+      const listeners = Array.isArray(config.instrumentation)
+        ? config.instrumentation
+        : [config.instrumentation];
+      for (const listener of listeners) {
+        manager.addListener(listener);
+      }
+    }
+
+    super(manager);
+    this.instrumentationManager = manager;
+    this.config = config;
+
+    // 2. Bounded Connection Pool Queue Defaults
+    this.connectionLimit = config.connectionLimit ?? 10;
+    // Bounded queue: fail-fast when connectionLimit * 10 is reached instead of unbounded memory leak
+    this.queueLimit = config.queueLimit ?? this.connectionLimit * 10;
+
     const poolConfig: DatabaseConfig = {
       waitForConnections: true,
-      connectionLimit: 10,
-      maxIdle: 10,
+      connectionLimit: this.connectionLimit,
+      queueLimit: this.queueLimit,
+      maxIdle: this.connectionLimit,
       idleTimeout: 60000,
-      queueLimit: 0,
       enableKeepAlive: true,
       keepAliveInitialDelay: 0,
       ...config
@@ -54,38 +95,120 @@ export class Database {
     this.pool = createPool(poolConfig);
   }
 
-  /**
-   * Escape an identifier (table name or column name) with backticks safely.
-   */
-  private escapeIdentifier(identifier: string): string {
-    if (!/^[a-zA-Z0-9_]+$/.test(identifier)) {
-      throw new DatabaseError(
-        `Invalid database identifier: "${identifier}". Identifiers must be alphanumeric and underscore only.`
-      );
+  protected getExecutor(): Pool {
+    if (this.isDraining) {
+      throw new DatabaseError('Database pool is currently draining and cannot accept new queries.');
     }
-    return `\`${identifier}\``;
+    return this.pool;
   }
 
   /**
-   * Execute an operation with automatic retry logic for transient connection drops and deadlocks.
+   * Check if an error was caused by pool queue saturation or exhaustion.
    */
-  private async executeWithRetry<T>(operation: () => Promise<T>): Promise<T> {
+  private isPoolExhausted(err: any): boolean {
+    if (!err) return false;
+    const msg = String(err.message || '').toLowerCase();
+    const code = String(err.code || '');
+
+    return (
+      code === 'ER_CON_COUNT_ERROR' ||
+      code === 'POOL_ENQUEUE_TIMEOUT' ||
+      msg.includes('pool is full') ||
+      msg.includes('queue limit reached') ||
+      msg.includes('timeout waiting for connection')
+    );
+  }
+
+  /**
+   * Check if an error is a deadlock or lock wait timeout.
+   */
+  private isDeadlock(err: any): boolean {
+    if (!err) return false;
+    return (
+      DEADLOCK_ERRORS.has(String(err.code)) ||
+      DEADLOCK_ERRORS.has(String(err.errno))
+    );
+  }
+
+  /**
+   * Check if an error is a transient network blip.
+   */
+  private isTransientNetwork(err: any): boolean {
+    if (!err) return false;
+    return (
+      TRANSIENT_NETWORK_ERRORS.has(String(err.code)) ||
+      TRANSIENT_NETWORK_ERRORS.has(String(err.errno))
+    );
+  }
+
+  /**
+   * Calculate exponential backoff delay with Full Jitter:
+   * delay = Math.random() * (baseDelay * 2^(attempt - 1))
+   */
+  private calculateJitterDelay(
+    attempt: number,
+    baseDelayMs: number = 200,
+    maxDelayMs: number = 3000
+  ): number {
+    const exponential = baseDelayMs * Math.pow(2, attempt - 1);
+    const capped = Math.min(exponential, maxDelayMs);
+    // Full jitter distributes retries uniformly across [0, capped]
+    return Math.floor(Math.random() * capped);
+  }
+
+  /**
+   * Safe, idempotent query execution wrapper with exponential backoff and full jitter.
+   */
+  protected override async runWithPolicy<T>(
+    operation: () => Promise<T>,
+    isRead: boolean,
+    options?: QueryExecutionOptions
+  ): Promise<T> {
+    const maxAttempts =
+      this.config.retryPolicy?.maxAttempts ?? this.config.retryAttempts ?? 3;
+    const baseDelay =
+      this.config.retryPolicy?.baseDelayMs ?? this.config.retryDelayMs ?? 200;
+    const maxDelay = this.config.retryPolicy?.maxDelayMs ?? 3000;
+
     let attempt = 0;
+
     while (true) {
       try {
         return await operation();
       } catch (err: any) {
         attempt++;
-        const isTransient =
-          TRANSIENT_ERROR_CODES.has(err.code) ||
-          TRANSIENT_ERROR_CODES.has(err.errno?.toString());
 
-        if (isTransient && attempt <= this.retryAttempts) {
-          const backoff = this.retryDelayMs * Math.pow(2, attempt - 1);
-          console.warn(
-            `[Database] Transient error (${err.code}). Retrying attempt ${attempt}/${this.retryAttempts} in ${backoff}ms...`
+        // 1. Fast-fail on pool queue exhaustion with HTTP 503
+        if (this.isPoolExhausted(err)) {
+          throw new PoolExhaustedError(
+            `Database connection pool queue exhausted (${this.queueLimit} limit reached). Server is temporarily saturated.`,
+            err
           );
-          await new Promise((resolve) => setTimeout(resolve, backoff));
+        }
+
+        const isDeadlock = this.isDeadlock(err);
+        const isNetwork = this.isTransientNetwork(err);
+
+        // Safe retry eligibility rules:
+        // - Deadlocks are always safe to retry
+        // - Network transient errors are retryable for reads (SELECT) or if explicitly marked idempotent
+        const isRetryable =
+          isDeadlock ||
+          (isNetwork && (isRead || options?.idempotent === true));
+
+        if (isRetryable && attempt <= maxAttempts) {
+          const delay = this.calculateJitterDelay(attempt, baseDelay, maxDelay);
+
+          this.instrumentationManager.onRetry?.({
+            attempt,
+            maxAttempts,
+            delayMs: delay,
+            error: err,
+            isDeadlock,
+            operationType: isRead ? 'read' : 'write'
+          });
+
+          await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
 
@@ -95,259 +218,199 @@ export class Database {
   }
 
   /**
-   * Execute a parameterized SELECT or data-retrieval query.
-   * Prevents SQL injection by enforcing parameter binding.
+   * Execute an atomic transaction with automatic rollback and deadlock retries.
+   *
+   * @param action Scoped transaction execution callback
+   * @param options Transaction retry configuration
    */
-  public async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-    return this.executeWithRetry(async () => {
-      const start = performance.now();
-      try {
-        const [rows] = await this.pool.query<RowDataPacket[] & T[]>(sql, params);
-        const duration = performance.now() - start;
-        this.logger.logQuery(sql, params, duration, Array.isArray(rows) ? rows.length : undefined);
-        return rows as T[];
-      } catch (err: any) {
-        const duration = performance.now() - start;
-        this.logger.logError(err, sql, params);
-        throw new DatabaseError(err.message, {
-          code: err.code,
-          sql,
-          sqlState: err.sqlState,
-          errno: err.errno,
-          sqlMessage: err.sqlMessage,
-          details: { durationMs: duration }
-        });
-      }
-    });
-  }
+  public async transaction<T>(
+    action: (trx: Transaction) => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    const maxRetries = options?.retries ?? 3;
+    const baseDelay = options?.retryDelayMs ?? 200;
+    let attempt = 0;
 
-  /**
-   * Execute a query and return only the first record, or null if no matching records found.
-   */
-  public async queryOne<T = any>(sql: string, params: any[] = []): Promise<T | null> {
-    const rows = await this.query<T>(sql, params);
-    return rows.length > 0 && rows[0] !== undefined ? rows[0] : null;
-  }
+    while (true) {
+      attempt++;
+      let conn: PoolConnection | null = null;
+      let threadId: number | string = '';
 
-  /**
-   * Execute a raw mutation query (INSERT, UPDATE, DELETE) and return the raw ResultSetHeader.
-   */
-  public async execute(sql: string, params: any[] = []): Promise<ResultSetHeader> {
-    return this.executeWithRetry(async () => {
-      const start = performance.now();
       try {
-        const [result] = await this.pool.execute<ResultSetHeader>(sql, params);
-        const duration = performance.now() - start;
-        this.logger.logQuery(sql, params, duration, result.affectedRows);
+        try {
+          conn = await this.pool.getConnection();
+          threadId = (conn as any).threadId ?? '';
+        } catch (acquireErr: any) {
+          if (this.isPoolExhausted(acquireErr)) {
+            throw new PoolExhaustedError('Failed to acquire connection for transaction: pool exhausted.');
+          }
+          throw acquireErr;
+        }
+
+        this.instrumentationManager.onTransaction?.('START', threadId);
+        await conn.beginTransaction();
+
+        const trx = new Transaction(conn, this.instrumentationManager);
+        const result = await action(trx);
+
+        await conn.commit();
+        this.instrumentationManager.onTransaction?.('COMMIT', threadId);
         return result;
       } catch (err: any) {
-        const duration = performance.now() - start;
-        this.logger.logError(err, sql, params);
-        throw new DatabaseError(err.message, {
-          code: err.code,
-          sql,
-          sqlState: err.sqlState,
-          errno: err.errno,
-          sqlMessage: err.sqlMessage,
-          details: { durationMs: duration }
+        if (conn) {
+          try {
+            await conn.rollback();
+            this.instrumentationManager.onTransaction?.('ROLLBACK', threadId);
+          } catch (rollbackErr) {
+            console.error('[Database] Rollback failure:', rollbackErr);
+          }
+        }
+
+        const isDeadlock = this.isDeadlock(err);
+        if (isDeadlock && attempt <= maxRetries) {
+          const delay = this.calculateJitterDelay(attempt, baseDelay, 3000);
+          this.instrumentationManager.onRetry?.({
+            attempt,
+            maxAttempts: maxRetries,
+            delayMs: delay,
+            error: err,
+            isDeadlock: true,
+            operationType: 'transaction'
+          });
+
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        if (err instanceof DatabaseError) {
+          throw err;
+        }
+
+        throw new DatabaseError(`Transaction failed: ${err.message}`, {
+          code: err.code ?? 'TRANSACTION_FAILED',
+          details: err
         });
+      } finally {
+        if (conn) {
+          conn.release();
+        }
       }
-    });
+    }
   }
 
   /**
-   * Safe, parameterized insert helper for single or bulk records.
-   * Automatically handles column extraction, identifier escaping, and placeholder mapping.
-   *
-   * @example
-   * await db.insert('users', { name: 'Alice', email: 'alice@example.com' });
+   * Instant CRUD Resource Router generator.
+   * Generates a fully featured, secure Express router with pagination, sorting, search, and auth.
    */
-  public async insert<TRecord extends Record<string, any>>(
-    table: string,
-    records: TRecord | TRecord[]
-  ): Promise<InsertResult> {
-    const items = Array.isArray(records) ? records : [records];
-    if (items.length === 0) {
-      return { insertId: 0, affectedRows: 0 };
-    }
+  public createResourceRouter(table: string, options?: ResourceEngineOptions): Router {
+    return createResourceRouter(this, table, options);
+  }
 
-    const firstItem = items[0];
-    if (!firstItem) {
-      return { insertId: 0, affectedRows: 0 };
-    }
-
-    const columns = Object.keys(firstItem);
-    if (columns.length === 0) {
-      throw new DatabaseError(`Cannot insert empty record into table "${table}".`);
-    }
-
-    const escapedTable = this.escapeIdentifier(table);
-    const escapedColumns = columns.map((col) => this.escapeIdentifier(col)).join(', ');
-
-    const rowPlaceholder = `(${columns.map(() => '?').join(', ')})`;
-    const allPlaceholders = items.map(() => rowPlaceholder).join(', ');
-
-    const sql = `INSERT INTO ${escapedTable} (${escapedColumns}) VALUES ${allPlaceholders}`;
-    const values: unknown[] = [];
-
-    for (const item of items) {
-      for (const col of columns) {
-        values.push(item[col] !== undefined ? item[col] : null);
-      }
-    }
-
-    const result = await this.execute(sql, values);
+  /**
+   * Inspect current connection pool metrics.
+   */
+  public getPoolMetrics(): PoolMetrics {
+    const internal = this.pool as any;
     return {
-      insertId: result.insertId,
-      affectedRows: result.affectedRows
+      totalConnections: internal.pool?._allConnections?.length ?? 0,
+      activeConnections: internal.pool?._acquiringConnections?.length ?? 0,
+      idleConnections: internal.pool?._freeConnections?.length ?? 0,
+      queuedRequests: internal.pool?._connectionQueue?.length ?? 0
     };
   }
 
   /**
-   * Safe, parameterized update helper.
-   *
-   * @example
-   * await db.update('users', { status: 'active' }, 'id = ?', [userId]);
+   * Process liveness check: verifies process health and uptime.
    */
-  public async update<TData extends Record<string, any>>(
-    table: string,
-    data: TData,
-    whereClause: string,
-    whereParams: unknown[] = []
-  ): Promise<UpdateResult> {
-    const keys = Object.keys(data);
-    if (keys.length === 0) {
-      throw new DatabaseError(`Cannot update table "${table}" with empty data payload.`);
-    }
-
-    const escapedTable = this.escapeIdentifier(table);
-    const setStatements = keys.map((key) => `${this.escapeIdentifier(key)} = ?`).join(', ');
-    const sql = `UPDATE ${escapedTable} SET ${setStatements} WHERE ${whereClause}`;
-
-    const values = keys.map((key) => data[key]);
-    const allParams = [...values, ...whereParams];
-
-    const result = await this.execute(sql, allParams);
+  public liveness(): { alive: boolean; uptimeSeconds: number } {
     return {
-      affectedRows: result.affectedRows,
-      changedRows: result.changedRows ?? result.affectedRows
+      alive: !this.isDraining,
+      uptimeSeconds: Math.floor((performance.now() - this.startTime) / 1000)
     };
   }
 
   /**
-   * Safe parameterized delete helper.
-   *
-   * @example
-   * await db.delete('sessions', 'expired_at < NOW()');
+   * Database readiness check: verifies MySQL connectivity and pool saturation.
    */
-  public async delete(
-    table: string,
-    whereClause: string,
-    whereParams: unknown[] = []
-  ): Promise<DeleteResult> {
-    const escapedTable = this.escapeIdentifier(table);
-    const sql = `DELETE FROM ${escapedTable} WHERE ${whereClause}`;
-    const result = await this.execute(sql, whereParams);
-    return {
-      affectedRows: result.affectedRows
-    };
-  }
-
-  /**
-   * Execute an atomic transaction with automatic commit and rollback handling.
-   * If any error is thrown within the callback, the transaction is automatically rolled back
-   * and the connection is safely returned to the pool.
-   *
-   * @example
-   * const result = await db.transaction(async (trx) => {
-   *   const order = await trx.insert('orders', { total: 100 });
-   *   await trx.insert('order_items', { order_id: order.insertId, item_id: 42 });
-   *   return order;
-   * });
-   */
-  public async transaction<T>(action: (trx: Transaction) => Promise<T>): Promise<T> {
-    const conn: PoolConnection = await this.pool.getConnection();
-    const trx = new Transaction(conn, this.logger);
-    const threadId = (conn as any).threadId;
-
-    try {
-      this.logger.logTransaction('START', threadId);
-      await conn.beginTransaction();
-
-      const result = await action(trx);
-
-      await conn.commit();
-      this.logger.logTransaction('COMMIT', threadId);
-      return result;
-    } catch (err: any) {
-      try {
-        await conn.rollback();
-        this.logger.logTransaction('ROLLBACK', threadId);
-      } catch (rollbackErr) {
-        console.error('[Database] Failed to rollback transaction:', rollbackErr);
-      }
-
-      if (err instanceof DatabaseError) {
-        throw err;
-      }
-
-      throw new DatabaseError(`Transaction failed: ${err.message}`, {
-        code: err.code ?? 'TRANSACTION_FAILED',
-        sqlMessage: err.sqlMessage,
-        details: err
-      });
-    } finally {
-      conn.release();
-    }
-  }
-
-  /**
-   * Check connection health, test ping latency, and report pool stats.
-   */
-  public async healthCheck(): Promise<HealthCheckResult> {
+  public async readiness(): Promise<{
+    ready: boolean;
+    latencyMs: number;
+    pool: PoolMetrics;
+    error?: string;
+  }> {
     const start = performance.now();
+    const pool = this.getPoolMetrics();
+
     try {
       await this.pool.query('SELECT 1');
       const latencyMs = Number((performance.now() - start).toFixed(2));
-      const poolInternal = this.pool as any;
+      const ready = pool.queuedRequests < this.queueLimit;
 
       return {
-        status: 'healthy',
+        ready,
         latencyMs,
-        timestamp: new Date().toISOString(),
-        pool: {
-          totalConnections: poolInternal.pool?._allConnections?.length ?? 0,
-          activeConnections: poolInternal.pool?._acquiringConnections?.length ?? 0,
-          idleConnections: poolInternal.pool?._freeConnections?.length ?? 0,
-          queuedRequests: poolInternal.pool?._connectionQueue?.length ?? 0
-        }
+        pool
       };
     } catch (err: any) {
       const latencyMs = Number((performance.now() - start).toFixed(2));
       return {
-        status: 'unhealthy',
+        ready: false,
         latencyMs,
-        timestamp: new Date().toISOString(),
-        error: err.message,
-        pool: {
-          totalConnections: 0,
-          activeConnections: 0,
-          idleConnections: 0,
-          queuedRequests: 0
-        }
+        pool,
+        error: err.message
       };
     }
   }
 
   /**
-   * Gracefully terminate the database pool and wait for all active connections to drain.
+   * Comprehensive health check combining liveness and readiness.
+   */
+  public async healthCheck(): Promise<HealthCheckResult> {
+    const live = this.liveness();
+    const ready = await this.readiness();
+
+    let status: HealthCheckResult['status'] = 'healthy';
+    if (!ready.ready) {
+      status = 'unhealthy';
+    } else if (ready.pool.queuedRequests > 0 || ready.latencyMs > 250) {
+      status = 'degraded';
+    }
+
+    return {
+      status,
+      timestamp: new Date().toISOString(),
+      liveness: live,
+      readiness: ready
+    };
+  }
+
+  /**
+   * Graceful drain and shutdown for process termination (SIGTERM / SIGINT).
+   * Rejects new queries immediately and waits for active connections to drain before closing pool.
+   */
+  public async drain(timeoutMs: number = 5000): Promise<void> {
+    this.isDraining = true;
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Database drain timed out after ${timeoutMs}ms`)), timeoutMs)
+    );
+
+    try {
+      await Promise.race([this.pool.end(), timeoutPromise]);
+    } catch (err) {
+      console.warn('[Database] Error or timeout during graceful drain:', err);
+    }
+  }
+
+  /**
+   * Close the pool immediately.
    */
   public async close(): Promise<void> {
     await this.pool.end();
   }
 
   /**
-   * Retrieve the underlying mysql2 Pool instance if low-level operations are needed.
+   * Retrieve underlying mysql2 Pool instance.
    */
   public getPool(): Pool {
     return this.pool;
@@ -355,7 +418,7 @@ export class Database {
 }
 
 /**
- * Factory function to create a new modern Database client instance.
+ * Factory function to create a Database client instance.
  */
 export function createDbClient(config: DatabaseConfig): Database {
   return new Database(config);
