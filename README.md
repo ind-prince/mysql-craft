@@ -58,12 +58,12 @@ interface User {
 }
 
 const user = await db.queryOne<User>(
-  'SELECT iduser, email, first_name FROM cel_account WHERE iduser = ?',
+  'SELECT iduser, email, first_name FROM account WHERE iduser = ?',
   [42]
 );
 
 // 3. Safe Parameterized Insertion
-const result = await db.insert('cel_account', {
+const result = await db.insert('account', {
   email: 'dev@company.com',
   first_name: 'Alex',
   last_name: 'Rivera',
@@ -81,13 +81,13 @@ When `debug: true` is enabled, every query prints formatted diagnostics directly
 
 ```
 [MYSQL] 11:34:20 AM  ⚡ 1.42ms
-  SQL:    SELECT * FROM `cel_account` WHERE `email` = ? LIMIT 1
+  SQL:    SELECT * FROM `account` WHERE `email` = ? LIMIT 1
   Params: ["dev@company.com"]
   Result: 1 row(s)
 
 [TX:START] 11:34:20 AM [Conn #14] Transaction started.
 [MYSQL] 11:34:20 AM  ⚡ 2.10ms
-  SQL:    INSERT INTO `cel_account` (`email`, `password_hash`) VALUES (?, ?)
+  SQL:    INSERT INTO `account` (`email`, `password_hash`) VALUES (?, ?)
   Params: ["dev@company.com", "********"]
   Result: 1 row(s)
 [TX:COMMIT] 11:34:20 AM [Conn #14] Transaction committed.
@@ -103,7 +103,7 @@ Sensitive fields (`password`, `token`, `secret`, `hash`) are **automatically mas
 Executes a parameterized read query and returns an array of typed records:
 ```typescript
 const activeUsers = await db.query<User>(
-  'SELECT * FROM cel_account WHERE status = ? ORDER BY created_at DESC',
+  'SELECT * FROM account WHERE status = ? ORDER BY created_at DESC',
   ['active']
 );
 ```
@@ -112,7 +112,7 @@ const activeUsers = await db.query<User>(
 Executes a query and returns the first row or `null` if no match:
 ```typescript
 const account = await db.queryOne<User>(
-  'SELECT * FROM cel_account WHERE email = ? LIMIT 1',
+  'SELECT * FROM account WHERE email = ? LIMIT 1',
   [email]
 );
 ```
@@ -137,7 +137,7 @@ await db.insert('order_items', [
 Safely updates records:
 ```typescript
 const { affectedRows } = await db.update(
-  'cel_account',
+  'account',
   { first_name: 'Alexander', status: 'verified' },
   'iduser = ?',
   [userId]
