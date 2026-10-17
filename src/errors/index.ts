@@ -59,6 +59,21 @@ export class DatabaseError extends AppError {
 }
 
 /**
+ * Thrown when the database connection pool queue limit is exceeded or timed out.
+ * Returns HTTP 503 Service Unavailable.
+ */
+export class PoolExhaustedError extends AppError {
+  public readonly statusCode: number = 503;
+
+  constructor(
+    message: string = 'Database connection pool exhausted. Server is temporarily unable to handle the request.',
+    details?: unknown
+  ) {
+    super(message, 'POOL_EXHAUSTED', details);
+  }
+}
+
+/**
  * Thrown when an authentication or authorization failure occurs.
  */
 export class AuthError extends AppError {

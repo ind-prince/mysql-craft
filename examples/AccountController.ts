@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * ARCHITECTURAL CASE STUDY & COMPARISON
- * Legacy Anti-Pattern vs. Modern @arch/mysql-craft Pattern
+ * Legacy Anti-Pattern vs. Modern @mysql-craft Pattern
  * ============================================================================
  */
 
@@ -286,3 +286,40 @@ export class AccountController {
     }
   }
 }
+
+// ----------------------------------------------------------------------------
+// 4. INSTANT CRUD RESOURCE ENGINE (Zero Boilerplate, 1-Line Generation)
+// ----------------------------------------------------------------------------
+//
+// For standard administration or RESTful table access, developers no longer
+// need to write repetitive CRUD controllers. The single line below generates
+// a complete Express router featuring:
+//   - ?page=1&limit=20 pagination metadata
+//   - ?sort=created_at:desc or ?sort=first_name:asc safe sorting
+//   - ?fields=iduser,email,first_name field projection
+//   - ?search=keyword multi-column LIKE search
+//   - ?role=admin exact column filters
+//   - Automatic stripping of readOnlyFields ('iduser', 'created_at') on writes
+//   - Automatic masking of hiddenFields ('password_hash') on responses
+//   - Built-in JWT authentication & role-based access control
+//
+export const accountCrudRouter = db.createResourceRouter('account', {
+  primaryKey: 'iduser',
+  allowedFields: ['iduser', 'email', 'first_name', 'last_name', 'role', 'created_at'],
+  readOnlyFields: ['iduser', 'created_at'],
+  hiddenFields: ['password_hash'],
+  searchableFields: ['email', 'first_name', 'last_name'],
+  defaultLimit: 20,
+  maxLimit: 100,
+  auth: { secret: process.env.JWT_ACCESS_SECRET || 'access-secret-key-12345' },
+  hooks: {
+    beforeCreate: async (data) => {
+      if (data.password) {
+        data.password_hash = await Security.hashPassword(data.password);
+        delete data.password;
+      }
+      return data;
+    }
+  }
+});
+
