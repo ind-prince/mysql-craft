@@ -1,5 +1,5 @@
 {
-  "name": "@mysql-craft",
+  "name": "mysql-craft",
   "version": "1.0.0",
   "description": "Modern, lightweight, developer-friendly MySQL wrapper for Node.js & TypeScript with built-in security, transactions, and modern logging.",
   "main": "./dist/index.js",
