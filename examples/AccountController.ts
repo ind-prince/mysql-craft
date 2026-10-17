@@ -1,7 +1,7 @@
 /**
  * ============================================================================
  * ARCHITECTURAL CASE STUDY & COMPARISON
- * Legacy Anti-Pattern vs. Modern @arch/mysql-craft Pattern
+ * Legacy Anti-Pattern vs. Modern @mysql-craft Pattern
  * ============================================================================
  */
 

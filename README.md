@@ -1,4 +1,4 @@
-# @arch/mysql-craft ⚡
+# @mysql-craft ⚡
 
 A modern, lightweight, developer-friendly MySQL wrapper library for Node.js and TypeScript built on top of `mysql2/promise`. Designed to eliminate SQL injection vulnerabilities, eradicate repetitive CRUD boilerplate with **Instant 1-Line Resource Routers**, and deliver enterprise-grade Developer Experience (DX) out of the box.
 
@@ -20,14 +20,14 @@ A modern, lightweight, developer-friendly MySQL wrapper library for Node.js and 
 - 📊 **Pluggable Instrumentation**: Decoupled events (`onQuery`, `onError`, `onRetry`, `onTransaction`, `onPoolMetrics`) for logging, OpenTelemetry, Datadog, or Prometheus APM integration.
 - 🔐 **Integrated Security & Auth Module**: Industrial-strength Bcrypt password hashing (cost factor 12) and dual JWT token rotation (Access + Refresh tokens).
 - 🔌 **Enterprise Express Middleware**: Drop-in JWT authentication with Request type declaration merging, role-based authorization (RBAC), and centralized error handling.
-- 📦 **Subpath Package Exports**: Native clean imports for `@arch/mysql-craft/core`, `@arch/mysql-craft/security`, `@arch/mysql-craft/middleware`, and `@arch/mysql-craft/errors`.
+- 📦 **Subpath Package Exports**: Native clean imports for `@mysql-craft/core`, `@mysql-craft/security`, `@mysql-craft/middleware`, and `@mysql-craft/errors`.
 
 ---
 
 ## 📦 Installation
 
 ```bash
-npm install @arch/mysql-craft mysql2
+npm install @mysql-craft mysql2
 ```
 
 Optional peer dependencies for web middleware:
@@ -44,7 +44,7 @@ Stop writing boilerplate controllers for basic database tables. `db.createResour
 
 ```typescript
 import express from 'express';
-import { createDbClient, Security } from '@arch/mysql-craft';
+import { createDbClient, Security } from '@mysql-craft';
 
 const app = express();
 app.use(express.json());
@@ -130,7 +130,7 @@ await db.insert('account_profile', [
 ```
 
 ### 3. Atomic Transactions with Deadlock Retries
-If two concurrent transactions deadlock (`ER_LOCK_DEADLOCK` / 1213 / 1205), `@arch/mysql-craft` automatically rolls back and retries the entire transaction with full jitter up to the configured limit:
+If two concurrent transactions deadlock (`ER_LOCK_DEADLOCK` / 1213 / 1205), `@mysql-craft` automatically rolls back and retries the entire transaction with full jitter up to the configured limit:
 
 ```typescript
 const order = await db.transaction(async (trx) => {
@@ -199,7 +199,7 @@ process.on('SIGTERM', async () => {
 ## 🔐 Security & Auth Helpers
 
 ```typescript
-import { Security } from '@arch/mysql-craft/security';
+import { Security } from '@mysql-craft/security';
 
 // 1. Password Hashing (Bcrypt, 12 rounds)
 const hash = await Security.hashPassword('PlaintextP@ssw0rd');
@@ -227,11 +227,11 @@ const safeUser = Security.sanitizeUser(user);
 
 Import exactly what you need cleanly:
 ```typescript
-import { createDbClient } from '@arch/mysql-craft';
-import { BaseClient, escapeIdentifier, buildSelectQuery } from '@arch/mysql-craft/core';
-import { Security } from '@arch/mysql-craft/security';
-import { authenticateJwt, requireRole } from '@arch/mysql-craft/middleware';
-import { DatabaseError, PoolExhaustedError, AuthError } from '@arch/mysql-craft/errors';
+import { createDbClient } from '@mysql-craft';
+import { BaseClient, escapeIdentifier, buildSelectQuery } from '@mysql-craft/core';
+import { Security } from '@mysql-craft/security';
+import { authenticateJwt, requireRole } from '@mysql-craft/middleware';
+import { DatabaseError, PoolExhaustedError, AuthError } from '@mysql-craft/errors';
 ```
 
 ---
