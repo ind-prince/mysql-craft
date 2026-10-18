@@ -1,11 +1,11 @@
-# @arch/mysql-craft ⚡
+# @mysql-craft ⚡
 
-[![npm version](https://img.shields.io/npm/v/@arch/mysql-craft.svg?style=flat-square&color=cb3837)](https://www.npmjs.com/package/@arch/mysql-craft)
+[![npm version](https://img.shields.io/npm/v/@mysql-craft.svg?style=flat-square&color=cb3837)](https://www.npmjs.com/package/@mysql-craft)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6+-3178c6.svg?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-339933.svg?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Vitest](https://img.shields.io/badge/Vitest-37%20Passed-6e9f18.svg?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![Downloads](https://img.shields.io/npm/dm/@arch/mysql-craft.svg?style=flat-square&color=blue)](https://www.npmjs.com/package/@arch/mysql-craft)
+[![Downloads](https://img.shields.io/npm/dm/@mysql-craft.svg?style=flat-square&color=blue)](https://www.npmjs.com/package/@mysql-craft)
 
 > **The modern, high-velocity MySQL engine for Node.js & TypeScript.**  
 > Eliminates SQL injection by default, eradicates boilerplate with **Instant 1-Line CRUD Routers**, automatically recovers from deadlocks with full-jitter retries, enforces bounded connection pool safety (fail-fast HTTP 503), and provides industrial-strength auth & visual diagnostics.
@@ -14,7 +14,7 @@
 
 ## 📑 Table of Contents
 
-- [Why @arch/mysql-craft?](#-why-archmysql-craft)
+- [Why @mysql-craft?](#-why-archmysql-craft)
 - [Architectural Comparison](#-architectural-comparison)
 - [Installation](#-installation)
 - [Quick Start Guide](#-quick-start-guide)
@@ -58,7 +58,7 @@
 
 ---
 
-## 💡 Why @arch/mysql-craft?
+## 💡 Why @mysql-craft?
 
 Writing direct MySQL code in Node.js applications frequently leads to four recurring architectural liabilities:
 
@@ -68,13 +68,13 @@ Writing direct MySQL code in Node.js applications frequently leads to four recur
 4. **Unhandled Deadlocks & Transient Drops:** MySQL deadlocks (`ER_LOCK_DEADLOCK` / code `1213`) crash concurrent transactions if not wrapped in retry logic.
 5. **Credential Leaks in Developer Logs:** Debug statements dump raw SQL queries containing plaintext passwords, hashes, and credit cards directly to stdout.
 
-`@arch/mysql-craft` was engineered from the ground up to eliminate these risks with zero runtime overhead and an exceptional developer experience.
+`@mysql-craft` was engineered from the ground up to eliminate these risks with zero runtime overhead and an exceptional developer experience.
 
 ---
 
 ## ⚖️ Architectural Comparison
 
-| Feature | Raw `mysql2` | Prisma / TypeORM | Knex.js | `@arch/mysql-craft` |
+| Feature | Raw `mysql2` | Prisma / TypeORM | Knex.js | `@mysql-craft` |
 | :--- | :---: | :---: | :---: | :---: |
 | **Instant 1-Line REST Routers** | ❌ No | ❌ No | ❌ No | ✅ **Yes (`createResourceRouter`)** |
 | **SQL Injection Proof By Default** | ⚠️ Developer-dependent | ✅ Yes | ✅ Yes | ✅ **Yes (Guaranteed Parameterization)** |
@@ -94,16 +94,16 @@ Install the package alongside the required `mysql2` driver:
 
 ```bash
 # Using npm
-npm install @arch/mysql-craft mysql2
+npm install @mysql-craft mysql2
 
 # Using pnpm
-pnpm add @arch/mysql-craft mysql2
+pnpm add @mysql-craft mysql2
 
 # Using yarn
-yarn add @arch/mysql-craft mysql2
+yarn add @mysql-craft mysql2
 
 # Using bun
-bun add @arch/mysql-craft mysql2
+bun add @mysql-craft mysql2
 ```
 
 ### Peer Dependencies
@@ -127,7 +127,7 @@ Create a centralized database instance using `createDbClient`:
 
 ```typescript
 // src/config/database.ts
-import { createDbClient } from '@arch/mysql-craft';
+import { createDbClient } from '@mysql-craft';
 
 export const db = createDbClient({
   host: process.env.DB_HOST || 'localhost',
@@ -172,7 +172,7 @@ const admins = await db.query<User>(
 // src/controllers/AccountController.ts
 import type { Request, Response, NextFunction } from 'express';
 import { db } from '../config/database';
-import { Security, ValidationError, AuthError } from '@arch/mysql-craft';
+import { Security, ValidationError, AuthError } from '@mysql-craft';
 
 export class AccountController {
   // Safe, transactional registration
@@ -249,7 +249,7 @@ Stop writing repetitive controllers, services, and queries for every relational 
 
 ```typescript
 import express from 'express';
-import { createDbClient, Security } from '@arch/mysql-craft';
+import { createDbClient, Security } from '@mysql-craft';
 
 const app = express();
 app.use(express.json());
@@ -534,7 +534,7 @@ const totalAdmins = await db.count({
 
 In high-concurrency environments, competing transactions accessing intersecting rows cause MySQL deadlocks (`ER_LOCK_DEADLOCK`, errno `1213` or `1205`). 
 
-`@arch/mysql-craft` handles transactions safely:
+`@mysql-craft` handles transactions safely:
 1. Acquires a dedicated `PoolConnection` from the pool.
 2. Issues `START TRANSACTION`.
 3. Passes a scoped `Transaction` client to your callback function.
@@ -590,10 +590,10 @@ await db.transaction(async (trx) => {
 
 ## 🔐 Security & Authentication Module
 
-Cleanly exported from `@arch/mysql-craft/security` (or root):
+Cleanly exported from `@mysql-craft/security` (or root):
 
 ```typescript
-import { Security } from '@arch/mysql-craft';
+import { Security } from '@mysql-craft';
 ```
 
 ### 1. Password Hashing (Bcrypt)
@@ -675,7 +675,7 @@ const resetToken = Security.generateSecureToken(32); // 64 hex characters
 
 ## 🔌 Express Middleware Suite
 
-Imported from `@arch/mysql-craft/middleware` or root:
+Imported from `@mysql-craft/middleware` or root:
 
 ```typescript
 import {
@@ -683,7 +683,7 @@ import {
   requireRole,
   validateBody,
   errorMiddleware
-} from '@arch/mysql-craft';
+} from '@mysql-craft';
 ```
 
 ### 1. JWT Authentication Middleware
@@ -748,7 +748,7 @@ app.post(
 Standardizes all application errors into a predictable JSON API structure:
 
 ```typescript
-import { errorMiddleware } from '@arch/mysql-craft';
+import { errorMiddleware } from '@mysql-craft';
 
 // Register at the end of your Express middleware stack
 app.use(errorMiddleware);
@@ -777,7 +777,7 @@ Standardized JSON output:
 
 In standard `mysql2`, connection queues are unbounded by default (`queueLimit: 0`). When high traffic spikes exceed database capacity, requests pile up in Node.js memory indefinitely until the process crashes with an Out Of Memory (OOM) error.
 
-`@arch/mysql-craft` enforces **bounded connection pooling**:
+`@mysql-craft` enforces **bounded connection pooling**:
 - Default `connectionLimit`: `10`
 - Default `queueLimit`: `connectionLimit * 10` (e.g., 100 queued requests)
 - When the queue limit is reached, incoming requests fail fast with **`PoolExhaustedError`** (HTTP 503 Service Unavailable), preserving server stability and allowing upstream load balancers to shed load gracefully.
@@ -931,7 +931,7 @@ const db = createDbClient({
 
 ## 🔨 Pure SQL Builders & Sanitizers
 
-Exported from `@arch/mysql-craft/core`:
+Exported from `@mysql-craft/core`:
 
 ```typescript
 import {
@@ -942,7 +942,7 @@ import {
   buildDeleteQuery,
   buildCountQuery,
   parseQueryParams
-} from '@arch/mysql-craft';
+} from '@mysql-craft';
 ```
 
 ### Identifier Escaping
@@ -1027,7 +1027,7 @@ const topOrders = await db.select<Order>({
 
 ### Request User Type Augmentation
 
-`@arch/mysql-craft` automatically extends the Express `Request` interface:
+`@mysql-craft` automatically extends the Express `Request` interface:
 
 ```typescript
 // Express Request interface is globally merged:
@@ -1048,19 +1048,19 @@ Import only the modules you need with clean subpath imports:
 
 ```typescript
 // Root import (everything)
-import { createDbClient, Security } from '@arch/mysql-craft';
+import { createDbClient, Security } from '@mysql-craft';
 
 // Core database client & query builders
-import { Database, BaseClient, escapeIdentifier } from '@arch/mysql-craft/core';
+import { Database, BaseClient, escapeIdentifier } from '@mysql-craft/core';
 
 // Security & auth module
-import { Security } from '@arch/mysql-craft/security';
+import { Security } from '@mysql-craft/security';
 
 // Express middleware
-import { authenticateJwt, requireRole, errorMiddleware } from '@arch/mysql-craft/middleware';
+import { authenticateJwt, requireRole, errorMiddleware } from '@mysql-craft/middleware';
 
 // Operational errors
-import { DatabaseError, PoolExhaustedError, ValidationError, AuthError } from '@arch/mysql-craft/errors';
+import { DatabaseError, PoolExhaustedError, ValidationError, AuthError } from '@mysql-craft/errors';
 ```
 
 ---
