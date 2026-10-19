@@ -96,14 +96,14 @@ Install the package alongside the required `mysql2` driver:
 # Using npm
 npm install @mysql-craft mysql2
 
-# Using pnpm
-pnpm add @mysql-craft mysql2
+# # Using pnpm
+# pnpm add @mysql-craft mysql2
 
-# Using yarn
-yarn add @mysql-craft mysql2
+# # Using yarn
+# yarn add @mysql-craft mysql2
 
-# Using bun
-bun add @mysql-craft mysql2
+# # Using bun
+# bun add @mysql-craft mysql2
 ```
 
 ### Peer Dependencies
@@ -1119,4 +1119,8 @@ Contributions are welcome! Please follow these steps:
 
 Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
 
-Developed with ❤️ by the **Principal Node.js Architecture Team**.
+<!-- Developed with ❤️ by the **Principal Node.js Architecture Team**. -->
+<p align="center">
+  Crafted with ❤️ by <a href="https://github.com/ind-prince">ind-prince</a>
+</p>
+
