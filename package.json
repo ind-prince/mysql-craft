@@ -52,7 +52,15 @@
     "bcrypt",
     "sql-injection-prevention"
   ],
-  "author": "Principal Node.js Architect",
+  "author": {
+    "name": "Prince Kumar",
+    "email": "Princekashyapsingh@gmail.com",
+    "url": "https://github.com/ind-prince"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ind-prince/mysql-craft.git"
+  },
   "license": "MIT",
   "peerDependencies": {
     "express": "^4.18.0 || ^5.0.0"
