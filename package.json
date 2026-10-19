@@ -1,6 +1,6 @@
 {
   "name": "mysql-craft",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "description": "Modern, lightweight, developer-friendly MySQL wrapper for Node.js & TypeScript with built-in security, transactions, and modern logging.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -60,6 +60,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ind-prince/mysql-craft.git"
+  },
+  "homepage": "https://ind-prince.github.io/docs.mysql-craft/",
+  "bugs": {
+    "url": "https://github.com/ind-prince/mysql-craft/issues"
   },
   "license": "MIT",
   "peerDependencies": {
