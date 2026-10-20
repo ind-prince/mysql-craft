@@ -1,8 +1,10 @@
 {
   "name": "mysql-craft",
-  "version": "1.0.4",
+  "version": "1.2.0",
   "description": "Modern, lightweight, developer-friendly MySQL wrapper for Node.js & TypeScript with built-in security, transactions, and modern logging.",
-  "main": "./dist/index.js",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
@@ -12,31 +14,35 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     },
     "./core": {
       "types": "./dist/core/index.d.ts",
-      "default": "./dist/core/index.js"
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
     },
     "./security": {
       "types": "./dist/security/index.d.ts",
-      "default": "./dist/security/index.js"
+      "import": "./dist/security/index.js",
+      "require": "./dist/security/index.cjs"
     },
     "./middleware": {
       "types": "./dist/middleware/index.d.ts",
-      "default": "./dist/middleware/index.js"
+      "import": "./dist/middleware/index.js",
+      "require": "./dist/middleware/index.cjs"
     },
     "./errors": {
       "types": "./dist/errors/index.d.ts",
-      "default": "./dist/errors/index.js"
+      "import": "./dist/errors/index.js",
+      "require": "./dist/errors/index.cjs"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "watch": "tsc -p tsconfig.build.json -w",
     "clean": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\"",
     "prepublishOnly": "npm run clean && npm run build && npm run test"
   },
@@ -49,8 +55,9 @@
     "transactions",
     "security",
     "jwt",
-    "bcrypt",
-    "sql-injection-prevention"
+    "sql-injection-prevention",
+    "tree-shaking",
+    "zero-overhead"
   ],
   "author": {
     "name": "Prince Kumar",
@@ -67,27 +74,31 @@
   },
   "license": "MIT",
   "peerDependencies": {
-    "express": "^4.18.0 || ^5.0.0"
+    "aws-ssl-profiles": "^1.0.0 || ^2.0.0"
   },
   "peerDependenciesMeta": {
-    "express": {
+    "aws-ssl-profiles": {
       "optional": true
     }
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.11.3",
     "picocolors": "^1.1.0"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.7.5",
+    "aws-ssl-profiles": "^1.1.2",
     "express": "^4.21.1",
+    "tsup": "^8.5.1",
     "typescript": "^5.6.3",
     "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "side-channel": "^1.1.0",
+    "esbuild": "^0.28.2"
   },
   "engines": {
     "node": ">=18.0.0"

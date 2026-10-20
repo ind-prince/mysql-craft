@@ -33,4 +33,6 @@ export {
   type ResourceEngineOptions,
   type ResourceHooks
 } from './ResourceEngine';
+export { safeDecodeBuffer, safeEncodeString } from './encoding';
+export { applySecureSSLProfile } from './ssl';
 export * from './types';

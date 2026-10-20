@@ -3,14 +3,14 @@ import { Security } from '../src/security/Auth';
 import { AuthError, ValidationError } from '../src/errors';
 
 describe('Security & Authentication Module', () => {
-  describe('Password Hashing', () => {
-    it('should hash a password with bcrypt and verify it correctly', async () => {
+  describe('Password Hashing (Native Crypto Primitives)', () => {
+    it('should hash a password with native crypto scrypt and verify it correctly', async () => {
       const password = 'CorrectHorseBatteryStaple123!';
-      const hash = await Security.hashPassword(password, 10);
+      const hash = await Security.hashPassword(password);
 
       expect(hash).toBeDefined();
       expect(hash).not.toBe(password);
-      expect(hash.startsWith('$2')).toBe(true);
+      expect(hash.startsWith('scrypt:')).toBe(true);
 
       const isValid = await Security.verifyPassword(password, hash);
       expect(isValid).toBe(true);

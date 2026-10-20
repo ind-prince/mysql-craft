@@ -1,9 +1,10 @@
 import { createPool } from 'mysql2/promise';
 import type { Pool, PoolConnection } from 'mysql2/promise';
-import { Router } from 'express';
+import type { Router } from 'express';
 import { BaseClient } from './BaseClient';
 import { Transaction } from './Transaction';
 import { createResourceRouter, type ResourceEngineOptions } from './ResourceEngine';
+import { applySecureSSLProfile } from './ssl';
 import {
   InstrumentationManager,
   TerminalLoggerInstrumentation,
@@ -81,7 +82,19 @@ export class Database extends BaseClient {
     // Bounded queue: fail-fast when connectionLimit * 10 is reached instead of unbounded memory leak
     this.queueLimit = config.queueLimit ?? this.connectionLimit * 10;
 
-    const poolConfig: DatabaseConfig = {
+    const {
+      debug: _debug,
+      instrumentation: _instrumentation,
+      slowQueryThresholdMs: _slowQueryThresholdMs,
+      retryPolicy: _retryPolicy,
+      retryAttempts: _retryAttempts,
+      retryDelayMs: _retryDelayMs,
+      sensitiveKeys: _sensitiveKeys,
+      useAwsRds: _useAwsRds,
+      ...driverPoolOptions
+    } = config;
+
+    const poolConfig = {
       waitForConnections: true,
       connectionLimit: this.connectionLimit,
       queueLimit: this.queueLimit,
@@ -89,7 +102,7 @@ export class Database extends BaseClient {
       idleTimeout: 60000,
       enableKeepAlive: true,
       keepAliveInitialDelay: 0,
-      ...config
+      ...driverPoolOptions
     };
 
     this.pool = createPool(poolConfig);
@@ -415,10 +428,25 @@ export class Database extends BaseClient {
   public getPool(): Pool {
     return this.pool;
   }
+
+  /**
+   * Asynchronously constructs a Database instance with automatic SSL profile
+   * resolution (e.g. lazy-loading AWS RDS CA cert bundles on demand).
+   *
+   * @param config - Database configuration options.
+   * @returns Ready-to-use Database instance.
+   */
+  public static async create(config: DatabaseConfig): Promise<Database> {
+    const resolvedConfig = await applySecureSSLProfile(config);
+    return new Database(resolvedConfig);
+  }
 }
 
 /**
  * Factory function to create a Database client instance.
+ *
+ * For cloud deployments with `useAwsRds: true`, consider `await Database.create(config)`
+ * to asynchronously load the AWS RDS SSL bundle via code-splitting.
  */
 export function createDbClient(config: DatabaseConfig): Database {
   return new Database(config);

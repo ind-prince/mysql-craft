@@ -1,9 +1,25 @@
-import { Router } from 'express';
-import type { Request, Response, NextFunction, RequestHandler } from 'express';
+import type { Router, Request, Response, NextFunction, RequestHandler } from 'express';
 import type { BaseClient } from './BaseClient';
 import { parseQueryParams, escapeIdentifier } from './sql';
 import { authenticateJwt, requireRole, type ExpressAuthOptions } from '../middleware/expressAuth';
 import { ValidationError } from '../errors';
+
+/**
+ * Safely instantiates an Express Router at runtime without bundling Express into
+ * production dependencies. Throws a clear error if Express is not installed.
+ */
+function resolveExpressRouter(): Router {
+  try {
+    const express = require('express');
+    const routerFactory = express.Router || express.default?.Router || express;
+    return typeof routerFactory === 'function' ? routerFactory() : routerFactory.call(express);
+  } catch (_err) {
+    throw new Error(
+      'The "express" package is required to use createResourceRouter. ' +
+      'Please install it in your project: npm install express'
+    );
+  }
+}
 
 export interface ResourceHooks {
   beforeCreate?: (data: any, req: Request) => Promise<any> | any;
@@ -111,7 +127,7 @@ export function createResourceRouter(
   table: string,
   options: ResourceEngineOptions = {}
 ): Router {
-  const router = Router();
+  const router = resolveExpressRouter();
   const primaryKey = options.primaryKey ?? 'id';
   const readOnlySet = new Set(options.readOnlyFields ?? [primaryKey, 'created_at']);
   const hiddenSet = new Set(options.hiddenFields ?? ['password', 'password_hash', 'hash', 'secret']);

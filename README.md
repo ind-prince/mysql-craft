@@ -4,7 +4,7 @@
 [![Documentation](https://img.shields.io/badge/docs-website-brightgreen.svg?style=flat-square)](https://ind-prince.github.io/docs.mysql-craft/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6+-3178c6.svg?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-339933.svg?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Vitest](https://img.shields.io/badge/Vitest-37%20Passed-6e9f18.svg?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Vitest-45%20Passed-6e9f18.svg?style=flat-square&logo=vitest&logoColor=white)](https://vitest.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![Downloads](https://img.shields.io/npm/dm/mysql-craft.svg?style=flat-square&color=blue)](https://www.npmjs.com/package/mysql-craft)
 
@@ -48,9 +48,11 @@ Writing direct MySQL code in Node.js applications frequently leads to recurring 
 | **Bounded Queue (Fail-Fast 503)** | ❌ Infinite queue | ⚠️ Configurable | ⚠️ Configurable | ✅ **Yes (`connectionLimit * 10`)** |
 | **Visual Colorized Query Logger** | ❌ None | ⚠️ Third-party | ⚠️ Third-party | ✅ **Built-in Syntax & Timing Badges** |
 | **Automated Credential Masking** | ❌ No | ❌ No | ❌ No | ✅ **Built-in (`password`, `token`, etc.)** |
-| **Integrated Bcrypt & JWT Auth** | ❌ None | ❌ None | ❌ None | ✅ **Built-in Security Module** |
+| **Integrated Security & JWT Auth** | ❌ None | ❌ None | ❌ None | ✅ **Built-in Security Module (Native Crypto)** |
+| **Zero-Byte Native Encoding** | ❌ iconv-lite | ⚠️ Bundled | ⚠️ Bundled | ✅ **Native Web API (TextDecoder/TextEncoder)** |
+| **Dynamic Cloud TLS (AWS RDS)** | ❌ None | ⚠️ Bundled | ❌ None | ✅ **Lazy-Loaded Peer (`aws-ssl-profiles`)** |
 | **K8s Health & Liveness Checks** | ❌ Manual | ❌ Manual | ❌ Manual | ✅ **Built-in (`healthCheck`, `drain`)** |
-| **Engine Footprint** | Lightweight | Heavy (Binary engines) | Medium | ⚡ **Ultra-lightweight (<25KB)** |
+| **Engine Footprint & Tree-Shaking** | Lightweight | Heavy (Binary engines) | Medium | ⚡ **Dual ESM/CJS (<25KB Minified)** |
 
 ---
 
@@ -200,7 +202,7 @@ app.listen(3000, () => console.log('API listening on http://localhost:3000'));
 ```typescript
 import { Security } from 'mysql-craft';
 
-// 1. Password Hashing (Bcrypt with cost factor 12)
+// 1. Zero-Dependency Password Hashing (Node.js Native Crypto scrypt)
 const hash = await Security.hashPassword('SuperSecret123!');
 const isValid = await Security.verifyPassword('SuperSecret123!', hash);
 
@@ -230,6 +232,37 @@ app.delete('/api/accounts/:id', authenticateJwt({ secret: process.env.JWT_ACCESS
 
 // Centralized operational error middleware
 app.use(errorMiddleware);
+```
+
+---
+
+## ⚡ Performance & Zero-Overhead Utilities
+
+### Zero-Byte Native Multibyte String Encoding
+Replaces heavy third-party libraries (e.g., `iconv-lite`) with native Web API primitives directly optimized inside the Node.js runtime:
+
+```typescript
+import { safeDecodeBuffer, safeEncodeString } from 'mysql-craft';
+
+const buffer = Buffer.from('Multibyte text: ñoño, 日本語, 🚀');
+const text = safeDecodeBuffer(buffer);
+const bytes = safeEncodeString(text);
+```
+
+### Dynamic Cloud Infrastructure TLS (AWS RDS)
+Offloads heavy certificate bundles out of production bundles into an optional peer dependency, loaded lazily at runtime:
+
+```typescript
+import { Database, applySecureSSLProfile } from 'mysql-craft';
+
+// Asynchronous client factory with automatic AWS RDS CA cert resolution
+const db = await Database.create({
+  host: process.env.RDS_HOSTNAME,
+  user: process.env.RDS_USERNAME,
+  password: process.env.RDS_PASSWORD,
+  database: process.env.RDS_DB_NAME,
+  useAwsRds: true
+});
 ```
 
 ---
