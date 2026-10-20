@@ -55,6 +55,17 @@ export {
   ValidationError
 } from './errors';
 
+// Zero-byte Native Encoding Utilities
+export {
+  safeDecodeBuffer,
+  safeEncodeString
+} from './core/encoding';
+
+// Cloud TLS Infrastructure (AWS RDS)
+export {
+  applySecureSSLProfile
+} from './core/ssl';
+
 // Web Middleware (Express)
 export {
   authenticateJwt,
@@ -63,3 +74,4 @@ export {
   errorMiddleware,
   type ExpressAuthOptions
 } from './middleware/expressAuth';
+

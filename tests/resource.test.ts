@@ -125,10 +125,10 @@ describe('Instant CRUD Resource Engine', () => {
     });
 
     // Execute route handler matching GET /
-    const route = router.stack.find((layer) => layer.route?.path === '/' && layer.route?.methods?.get);
-    expect(route).toBeDefined();
+    const routeLayer: any = router.stack.find((layer: any) => layer.route?.path === '/' && layer.route?.methods?.get);
+    expect(routeLayer).toBeDefined();
 
-    await route!.route.stack[0].handle(req, res, next);
+    await routeLayer.route.stack[0].handle(req, res, next);
 
     expect(res.statusCode).toBe(200);
     expect(res._data.success).toBe(true);
@@ -151,12 +151,12 @@ describe('Instant CRUD Resource Engine', () => {
       params: { id: '1' }
     });
 
-    const route = router.stack.find(
-      (layer) => layer.route?.path === '/:id' && layer.route?.methods?.get
+    const routeLayer: any = router.stack.find(
+      (layer: any) => layer.route?.path === '/:id' && layer.route?.methods?.get
     );
-    expect(route).toBeDefined();
+    expect(routeLayer).toBeDefined();
 
-    await route!.route.stack[0].handle(req, res, next);
+    await routeLayer.route.stack[0].handle(req, res, next);
 
     expect(res.statusCode).toBe(200);
     expect(res._data.success).toBe(true);
@@ -175,10 +175,10 @@ describe('Instant CRUD Resource Engine', () => {
       params: { id: '999' }
     });
 
-    const route = router.stack.find(
-      (layer) => layer.route?.path === '/:id' && layer.route?.methods?.get
+    const routeLayer: any = router.stack.find(
+      (layer: any) => layer.route?.path === '/:id' && layer.route?.methods?.get
     );
-    await route!.route.stack[0].handle(req, res, next);
+    await routeLayer.route.stack[0].handle(req, res, next);
 
     expect(res.statusCode).toBe(404);
     expect(res._data.success).toBe(false);
@@ -201,10 +201,10 @@ describe('Instant CRUD Resource Engine', () => {
       }
     });
 
-    const route = router.stack.find(
-      (layer) => layer.route?.path === '/' && layer.route?.methods?.post
+    const routeLayer: any = router.stack.find(
+      (layer: any) => layer.route?.path === '/' && layer.route?.methods?.post
     );
-    await route!.route.stack[0].handle(req, res, next);
+    await routeLayer.route.stack[0].handle(req, res, next);
 
     expect(res.statusCode).toBe(201);
     expect(res._data.success).toBe(true);
@@ -231,10 +231,10 @@ describe('Instant CRUD Resource Engine', () => {
       body: { email: 'dan@example.com', name: 'Dan' }
     });
 
-    const route = router.stack.find(
-      (layer) => layer.route?.path === '/' && layer.route?.methods?.post
+    const routeLayer: any = router.stack.find(
+      (layer: any) => layer.route?.path === '/' && layer.route?.methods?.post
     );
-    await route!.route.stack[0].handle(req, res, next);
+    await routeLayer.route.stack[0].handle(req, res, next);
 
     expect(beforeHook).toHaveBeenCalledTimes(1);
     expect(afterHook).toHaveBeenCalledTimes(1);

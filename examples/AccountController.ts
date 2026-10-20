@@ -54,7 +54,7 @@ export class AccountController {
    * Pain Points Solved:
    * 1. SQL Injection: Automatically prevented via parameterized .insert()
    * 2. Atomic Operations: Account and Profile are inserted inside db.transaction()
-   * 3. Password Security: Bcrypt hashing with optimal work factor (cost 12)
+   * 3. Password Security: Native crypto scrypt hashing with zero external dependencies
    * 4. Error Handling: Throws operational errors (ValidationError) caught cleanly
    */
   public static async register(
@@ -167,7 +167,7 @@ export class AccountController {
         throw AuthError.invalidCredentials();
       }
 
-      // Constant-time bcrypt comparison
+      // Constant-time native cryptographic comparison
       const isPasswordValid = await Security.verifyPassword(password, user.password_hash);
       if (!isPasswordValid) {
         throw AuthError.invalidCredentials();
