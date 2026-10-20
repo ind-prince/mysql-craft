@@ -1,40 +1,76 @@
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { AuthError, ValidationError } from '../errors';
 import type { BaseTokenPayload, TokenPairResult } from './types';
 
 /**
- * Enterprise-grade Security & Authentication helpers for password hashing and JWT management.
+ * Enterprise-grade Security & Authentication helpers for token and cryptographic operations.
+ * Operates purely on native Node.js cryptographic primitives with zero external native driver bloat.
  */
 export class Security {
   /**
-   * Hashes a plaintext password using bcrypt with configurable work factor (salt rounds).
+   * Hashes a plaintext password using Node.js native crypto (scrypt) with a cryptographically
+   * secure random salt, requiring zero external dependencies.
+   *
+   * Note on Separation of Concerns:
+   * Database abstraction layers operate as pure, un-opinionated utility engines. Consumers
+   * are directed to pass pre-hashed payloads using standard runtime platforms.
    *
    * @param password Plaintext password to hash
-   * @param saltRounds Cost factor for key derivation (default: 12)
+   * @param costOrSalt Optional salt string or cost factor
+   * @returns Formatted hash string `scrypt:<salt>:<hexKey>`
    */
-  public static async hashPassword(password: string, saltRounds: number = 12): Promise<string> {
+  public static async hashPassword(password: string, costOrSalt?: number | string): Promise<string> {
     if (!password || typeof password !== 'string') {
       throw new ValidationError('Password is required and must be a non-empty string.');
     }
     if (password.length > 1024) {
       throw new ValidationError('Password length exceeds maximum allowed limit.');
     }
-    return bcrypt.hash(password, saltRounds);
+
+    const salt = typeof costOrSalt === 'string' ? costOrSalt : crypto.randomBytes(16).toString('hex');
+    return new Promise((resolve, reject) => {
+      crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+        if (err) return reject(err);
+        resolve(`scrypt:${salt}:${derivedKey.toString('hex')}`);
+      });
+    });
   }
 
   /**
-   * Verifies a plaintext password against a stored bcrypt hash using constant-time comparison.
+   * Verifies a plaintext password candidate against a stored hash using constant-time
+   * buffer comparison (`crypto.timingSafeEqual`) to prevent timing side-channel attacks.
    *
    * @param password Plaintext password candidate
-   * @param hash Stored bcrypt hash string
+   * @param hash Stored hash string
    */
   public static async verifyPassword(password: string, hash: string): Promise<boolean> {
     if (!password || !hash) {
       return false;
     }
-    return bcrypt.compare(password, hash);
+
+    if (hash.startsWith('scrypt:')) {
+      const parts = hash.split(':');
+      if (parts.length !== 3 || !parts[1] || !parts[2]) {
+        return false;
+      }
+      const salt = parts[1];
+      const storedKeyHex = parts[2];
+      const storedBuffer = Buffer.from(storedKeyHex, 'hex');
+
+      return new Promise((resolve) => {
+        crypto.scrypt(password, salt, storedBuffer.length, (err, derivedKey) => {
+          if (err) return resolve(false);
+          try {
+            resolve(crypto.timingSafeEqual(storedBuffer, derivedKey));
+          } catch {
+            resolve(false);
+          }
+        });
+      });
+    }
+
+    return false;
   }
 
   /**

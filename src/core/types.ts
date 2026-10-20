@@ -101,6 +101,12 @@ export interface DatabaseConfig extends PoolOptions {
    * Field names to mask in console query logs.
    */
   sensitiveKeys?: string[];
+
+  /**
+   * If true, dynamically loads AWS RDS CA bundle certificates using the optional
+   * peer dependency `aws-ssl-profiles`.
+   */
+  useAwsRds?: boolean;
 }
 
 /**
